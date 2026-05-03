@@ -1,20 +1,25 @@
 // Package main is the entry point for the aixgate CLI.
 //
-// Aixgate is a deny-by-default sandbox for AI coding agents. The v0.1
-// implementation is in flight per docs/PRD.md §15; this file is a
-// placeholder so go.mod stays consistent and CI has something to lint.
+// v0.1 ships a single subcommand, `aixgate run`, that wraps a child
+// process in a deny-by-default sandbox using the hardcoded policy from
+// internal/aixgate/jail.DefaultV01Policy. See docs/PRD.md §15.
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"syscall"
 
-	// Reserved consumption of aixgo's public API — aixgate will use
-	// pkg/security helpers in v0.1 (input validation, SSRF protection).
-	// The blank import keeps go.mod honest until the real call sites land.
-	_ "github.com/aixgo-dev/aixgo/pkg/security"
+	"github.com/spf13/cobra"
+
+	"github.com/aixgo-dev/aixgate/internal/aixgate/jail"
 )
 
-// Version is set at build time by GoReleaser via -ldflags.
+// Build-time variables populated by GoReleaser via -ldflags. See .goreleaser.yaml.
 var (
 	Version = "dev"
 	Commit  = "none"
@@ -22,6 +27,78 @@ var (
 )
 
 func main() {
-	fmt.Printf("aixgate %s (commit %s, built %s)\n", Version, Commit, Date)
-	fmt.Println("Aixgate v0.1 is in active development. See https://github.com/aixgo-dev/aixgate/blob/main/docs/PRD.md")
+	if err := newRootCmd().Execute(); err != nil {
+		// Cobra has already printed user-facing error output.
+		// Translate exec exit codes faithfully so `aixgate run -- false`
+		// exits 1 rather than 0 or some opaque cobra default.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.ExitCode())
+		}
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "aixgate",
+		Short: "A deny-by-default sandbox for AI coding agents",
+		Long: `aixgate launches a child process inside a deny-by-default sandbox
+that hides .env files, SSH private keys, and AWS credentials from the
+process and any subprocesses it spawns. v0.1 ships macOS only and uses
+a hardcoded policy.
+
+See https://github.com/aixgo-dev/aixgate/blob/main/docs/PRD.md for the
+full design.`,
+		SilenceUsage:  true,
+		SilenceErrors: false,
+	}
+	root.AddCommand(newRunCmd(), newVersionCmd())
+	return root
+}
+
+func newRunCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "run -- CMD [ARGS...]",
+		Short: "Run a command inside the sandbox",
+		Long: `Run launches CMD ARGS inside a sandbox configured with aixgate's v0.1
+hardcoded policy. The standard input, output, and error of the child are
+inherited; the child's exit code is propagated.
+
+Example:
+
+  aixgate run -- claude              # launch Claude Code in the sandbox
+  aixgate run -- ls ~/.ssh           # ls inside the sandbox
+  aixgate run -- bash -c "cat .env"  # subprocesses are also sandboxed`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			policy := jail.DefaultV01Policy()
+			j, err := jail.New(policy)
+			if err != nil {
+				return err
+			}
+
+			// Forward SIGINT/SIGTERM to the child via the cancellable
+			// context. exec.CommandContext sends SIGKILL on cancel,
+			// which is correct behaviour for a sandboxed child that
+			// has gone unresponsive.
+			ctx, cancel := signal.NotifyContext(
+				context.Background(), syscall.SIGINT, syscall.SIGTERM,
+			)
+			defer cancel()
+
+			return j.Run(ctx, args[0], args[1:])
+		},
+	}
+	return cmd
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print build information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("aixgate %s (commit %s, built %s)\n", Version, Commit, Date)
+		},
+	}
 }
