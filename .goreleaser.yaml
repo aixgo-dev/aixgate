@@ -1,0 +1,123 @@
+# GoReleaser configuration for Aixgate
+# Tested with GoReleaser v2.13+
+# See https://goreleaser.com for documentation
+#
+# Aixgate is a runtime sandbox for AI coding agents (Claude Code, Cursor, Aider, Codex).
+# v0.x targets macOS and Linux only; Windows support is on the v1.x roadmap (PRD §11.4).
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: aixgate
+    main: ./cmd/aixgate
+    binary: aixgate
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.ShortCommit}}
+      - -X main.Date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: 'Security'
+      regexp: '^.*?(security(\([[:word:]]+\))?|fix\(security\))!?:.+$'
+      order: 0
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: aixgo-dev
+    name: aixgate
+  draft: false
+  prerelease: auto
+  mode: append
+  name_template: "v{{.Version}}"
+  header: |
+    ## Aixgate {{.Version}}
+
+    Runtime sandbox for AI coding agents.
+
+  footer: |
+    ## Installation
+
+    **macOS (Homebrew):**
+    ```bash
+    brew install aixgo-dev/tap/aixgate
+    ```
+
+    **Linux (one-liner):**
+    ```bash
+    curl -sSL https://aixgo.dev/aixgate/install.sh | sh
+    ```
+
+    **Manual download:**
+    ```bash
+    # Linux/macOS
+    curl -L https://github.com/aixgo-dev/aixgate/releases/download/{{.Tag}}/aixgate_{{.Version}}_Linux_x86_64.tar.gz | tar xz
+    sudo mv aixgate /usr/local/bin/
+
+    # Or install from source
+    go install github.com/aixgo-dev/aixgate/cmd/aixgate@{{.Tag}}
+    ```
+
+    See [SECURITY.md](https://github.com/aixgo-dev/aixgate/blob/main/SECURITY.md) for vulnerability reporting.
+
+    ---
+    **Full Changelog**: https://github.com/aixgo-dev/aixgate/compare/{{.PreviousTag}}...{{.Tag}}
+
+sboms:
+  - artifacts: archive
