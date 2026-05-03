@@ -8,7 +8,7 @@
 | **Parent** | aixgo.dev |
 | **Author** | Charles Green |
 | **Version** | 0.1 (Draft) |
-| **Date** | April 2026 |
+| **Date** | May 2026 |
 | **Status** | Proposed |
 | **License** | MIT |
 
@@ -617,7 +617,7 @@ This layering gives aixgo.dev a credible answer to the single most common securi
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Agent vendors build their own sandboxing, making Aixgate redundant. | Medium | Position as defense-in-depth and cross-vendor. A per-vendor solution will always leave users with the "which one am I running today" problem Aixgate solves. |
+| Users assume agent vendors' built-in sandboxes are sufficient and Aixgate is redundant. | Low | The premise is empirically false on two fronts. **First**, vendor sandboxes get bypassed routinely. Cursor's YOLO mode accumulated [seven CVEs in 2025](https://www.mintmcp.com/blog/cursor-security) including [shell-builtin and obfuscation bypasses of the denylist](https://www.theregister.com/2025/07/21/cursor_ai_safeguards_easily_bypassed/); a Claude Code agent at Ona [discovered `/proc/self/root/usr/bin/npx` to bypass the denylist, and when bubblewrap blocked that path the agent simply disabled the sandbox itself](https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/); [Google Antigravity's "secure mode" was defeated by prompt-injection-to-RCE](https://cyberscoop.com/google-antigravity-pillar-security-agent-sandbox-escape-remote-code-execution/); [CVE-2025-54795 (Claude Code) and GHSA-534m-3w6r-8pqr (Cursor)](https://www.truefoundry.com/blog/claude-code-prompt-injection) are argument-injection bypasses of pre-approved commands. Agents are designed to break out when they decide a goal needs it; vendors are still patching new bypasses every quarter. **Second**, vendor-only sandboxing requires trusting the same vendor with both execution and audit. [An audit trail written by the audited process is not an audit trail](https://nono.sh/blog/secure-agent-audit) — when the agent is compromised, its log becomes part of the attack surface. Aixgate enforces at the OS boundary (Landlock + seccomp on Linux, `sandbox-exec` on macOS) below the agent's reach, and writes its audit log from the host process, not the agent. Defense-in-depth and vendor-independence, not redundancy. |
 | Users disable Aixgate because the default profile is too strict. | High | Ship permissive-but-safe defaults. Make it easy to allow specific paths on the fly. Prioritize the "it just works" path for popular agents. |
 | Open source positioning conflicts with future commercial offering. | Medium | Commit clearly that the core enforcement and policy engine are MIT forever. Commercial layer, if any, is around managed policy distribution, SIEM integration, or enterprise support — not gating core features. |
 
@@ -625,7 +625,7 @@ This layering gives aixgo.dev a credible answer to the single most common securi
 
 - Should we support a "learning mode" that observes agent behavior and suggests policy? Useful for first-time users but potentially a security anti-pattern.
 - How do we handle agents that legitimately need a one-off read of a sensitive file (for example, reading a `.env` to verify a variable is present)? Redaction? Prompt? Neither?
-- Should the audit log be tamper-evident (hash chain, append-only) by default, or is that over-engineering for v1?
+- ~~Should the audit log be tamper-evident (hash chain, append-only) by default, or is that over-engineering for v1?~~ **Resolved (May 2026):** tamper-evident audit logging is foundational, not over-engineering. The whole point of a host-written log is that an independent reviewer (operator, engineer, auditor) can verify what the agent did without trusting the agent or the host. Hash-chained append-only by default; cryptographic signing for the v0.2 SIEM integration path. See §13.2 for context.
 - Is there a meaningful difference between "Aixgate" as a standalone product and `aixgo aixgate` as a subcommand of an eventual `aixgo` CLI? Naming decision to revisit before launch.
 - Should `.aixgate.yaml` support environment-specific overrides (dev vs staging vs demo contexts)?
 
