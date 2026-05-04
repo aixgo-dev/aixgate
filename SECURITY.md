@@ -14,7 +14,7 @@ If you cannot use GitHub Security Advisories, contact the maintainers directly v
 
 In scope:
 
-- Sandbox bypass: any technique that allows a process running under `aixgate run` to read, write, or execute outside the configured policy without exiting the jail.
+- Sandbox bypass: any technique that allows a process running under `aixgate run` to read, write, or execute outside the configured policy without exiting the sandbox.
 - Policy parser vulnerabilities: malformed `.aixgate.yaml` files that crash the policy compiler, leak filesystem information, or allow privilege escalation when loaded.
 - Audit log integrity: any technique that allows a sandboxed process to suppress, forge, or tamper with audit log entries.
 - Privilege escalation from the sandboxed process to the host user.

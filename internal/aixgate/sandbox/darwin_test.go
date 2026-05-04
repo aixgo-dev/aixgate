@@ -1,6 +1,6 @@
 //go:build darwin
 
-package jail
+package sandbox
 
 import (
 	"strings"
@@ -19,8 +19,8 @@ func TestSBPLGeneration(t *testing.T) {
 			"/Users/test/.aws/credentials",
 		},
 	}
-	j := &darwinJailer{policy: p}
-	profile, err := j.buildSBPL()
+	s := &darwinSandbox{policy: p}
+	profile, err := s.buildSBPL()
 	if err != nil {
 		t.Fatalf("buildSBPL: %v", err)
 	}

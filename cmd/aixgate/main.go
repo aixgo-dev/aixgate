@@ -2,7 +2,7 @@
 //
 // v0.1 ships a single subcommand, `aixgate run`, that wraps a child
 // process in a deny-by-default sandbox using the hardcoded policy from
-// internal/aixgate/jail.DefaultV01Policy. See docs/PRD.md §15.
+// internal/aixgate/sandbox.DefaultV01Policy. See docs/PRD.md §15.
 package main
 
 import (
@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/aixgo-dev/aixgate/internal/aixgate/jail"
+	"github.com/aixgo-dev/aixgate/internal/aixgate/sandbox"
 )
 
 // Build-time variables populated by GoReleaser via -ldflags. See .goreleaser.yaml.
@@ -72,8 +72,8 @@ Example:
   aixgate run -- bash -c "cat .env"  # subprocesses are also sandboxed`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			policy := jail.DefaultV01Policy()
-			j, err := jail.New(policy)
+			policy := sandbox.DefaultV01Policy()
+			sb, err := sandbox.New(policy)
 			if err != nil {
 				return err
 			}
@@ -87,7 +87,7 @@ Example:
 			)
 			defer cancel()
 
-			return j.Run(ctx, args[0], args[1:])
+			return sb.Run(ctx, args[0], args[1:])
 		},
 	}
 	return cmd

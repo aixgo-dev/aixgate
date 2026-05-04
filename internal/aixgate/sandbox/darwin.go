@@ -1,6 +1,6 @@
 //go:build darwin
 
-package jail
+package sandbox
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// New returns a macOS Jailer that wraps the child process in `sandbox-exec`
+// New returns a macOS Sandbox that wraps the child process in `sandbox-exec`
 // with a generated SBPL profile.
 //
 // Note (PRD §15.2 milestone 2): SBPL cannot hide the EXISTENCE of a file —
@@ -23,16 +23,16 @@ import (
 // Note (PRD §13.1): `sandbox-exec` is Apple-deprecated but still ships in
 // every released macOS through 2026 and is used by Apple's own tooling.
 // We use it intentionally for v0.1 — the v0.2+ path is FUSE-T.
-func New(p Policy) (Jailer, error) {
-	return &darwinJailer{policy: p}, nil
+func New(p Policy) (Sandbox, error) {
+	return &darwinSandbox{policy: p}, nil
 }
 
-type darwinJailer struct {
+type darwinSandbox struct {
 	policy Policy
 }
 
-func (j *darwinJailer) Run(ctx context.Context, cmd string, args []string) error {
-	profile, err := j.buildSBPL()
+func (s *darwinSandbox) Run(ctx context.Context, cmd string, args []string) error {
+	profile, err := s.buildSBPL()
 	if err != nil {
 		return fmt.Errorf("build sandbox profile: %w", err)
 	}
@@ -77,13 +77,13 @@ func (j *darwinJailer) Run(ctx context.Context, cmd string, args []string) error
 // The profile is permissive by default (`(allow default)`) and adds explicit
 // `(deny file-read* ...)` rules for the policy's deny list. This matches
 // PRD §15.1.3 — v0.1 only validates the deny path; v0.2 flips the default.
-func (j *darwinJailer) buildSBPL() (string, error) {
+func (s *darwinSandbox) buildSBPL() (string, error) {
 	var b strings.Builder
 	b.WriteString("(version 1)\n")
 	b.WriteString("(allow default)\n")
 	b.WriteString("(deny file-read*\n")
 
-	for _, pat := range j.policy.DenyReadGlobs {
+	for _, pat := range s.policy.DenyReadGlobs {
 		clause, err := sbplClauseForGlob(pat)
 		if err != nil {
 			return "", fmt.Errorf("translate %q: %w", pat, err)

@@ -1,4 +1,4 @@
-package jail
+package sandbox
 
 import (
 	"os"
