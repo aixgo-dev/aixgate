@@ -54,3 +54,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with `repo` scope on aixgo-dev/homebrew-aixgate so GoReleaser
+          # can push the generated formula. Configure under repo Settings →
+          # Secrets and variables → Actions → New repository secret.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

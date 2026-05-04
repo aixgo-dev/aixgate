@@ -96,7 +96,7 @@ release:
 
     **macOS (Homebrew):**
     ```bash
-    brew install aixgo-dev/tap/aixgate
+    brew install aixgo-dev/aixgate/aixgate
     ```
 
     **Linux (one-liner):**
@@ -121,3 +121,23 @@ release:
 
 sboms:
   - artifacts: archive
+
+brews:
+  - name: aixgate
+    repository:
+      owner: aixgo-dev
+      name: homebrew-aixgate
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/aixgo-dev/aixgate"
+    description: "A deny-by-default sandbox for AI coding agents (Claude Code, Cursor, Aider, Codex)."
+    license: "MIT"
+    commit_author:
+      name: "aixgate-releaser"
+      email: "noreply@aixgo.dev"
+    commit_msg_template: "chore(formula): bump aixgate to {{ .Tag }}"
+    test: |
+      system "#{bin}/aixgate version"
+    install: |
+      bin.install "aixgate"
