@@ -84,7 +84,11 @@ release:
     name: aixgate
   draft: false
   prerelease: auto
-  mode: append
+  # keep-existing: if the tag's release already has matching assets,
+  # skip them rather than 422-failing. Critical for re-runs after a
+  # partial first-run failure (e.g. brews step fails on first attempt
+  # but binaries are already published).
+  mode: keep-existing
   name_template: "v{{.Version}}"
   header: |
     ## Aixgate {{.Version}}
