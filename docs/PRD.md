@@ -222,7 +222,7 @@ Aixgate is a single Go binary composed of the following internal components:
 | **CLI** (`cmd/aixgate`) | Argument parsing, user-facing commands, orchestration. |
 | **Policy engine** (`internal/policy`) | Load, validate, and evaluate policies. Returns allow / deny / redact / prompt decisions for a given access request. |
 | **Overlay filesystem** (`internal/fs`) | FUSE-based filesystem that mediates every syscall through the policy engine. Implements path canonicalization, redaction stubs, and `ENOENT` masking. |
-| **Process jail** (`internal/jail`) | Platform-specific process isolation: mount namespaces and landlock on Linux, `sandbox-exec` on macOS. Responsible for chroot, environment stripping, and `PATH` restriction. |
+| **Process sandbox** (`internal/aixgate/sandbox`) | Platform-specific process isolation: mount namespaces and landlock on Linux, `sandbox-exec` on macOS. Responsible for chroot, environment stripping, and `PATH` restriction. |
 | **Audit log** (`internal/audit`) | Structured JSONL writer with rotation. Supports live tailing and query. |
 | **Profile registry** (`internal/profiles`) | Built-in profiles shipped with the binary, plus user profile discovery in `~/.aixgate/profiles`. |
 | **Prompt daemon** (`internal/prompt`, v1.1) | Desktop notifications for interactive allow/deny prompts when policy specifies `prompt` on deny. |
@@ -246,8 +246,9 @@ aixgate/
 │   │   ├── redact.go           # Stub/redaction generation
 │   │   ├── canonical.go        # Path canonicalization
 │   │   └── linux.go            # Linux-specific FUSE setup
-│   ├── jail/                   # Process isolation (pure-Go, no cgo)
-│   │   ├── jail.go             # Cross-platform Jailer interface
+│   ├── sandbox/                # Process isolation (pure-Go, no cgo)
+│   │   ├── sandbox.go          # Cross-platform Sandbox interface
+│   │   ├── policy.go           # Policy struct + DefaultV01Policy
 │   │   ├── linux.go            # go-fuse overlay + go-landlock + go-seccomp-bpf
 │   │   └── darwin.go           # sandbox-exec profile generation + exec.Command
 │   ├── audit/                  # Structured logging
@@ -287,7 +288,7 @@ aixgate/
 
 ### 6.3 Enforcement boundary
 
-Aixgate is pure Go. No cgo, no C toolchain, no macFUSE kext. Enforcement is delivered per platform by composing pure-Go libraries (on Linux) and host-provided binaries invoked via `exec.Command` (on macOS), behind a single `Jailer` interface.
+Aixgate is pure Go. No cgo, no C toolchain, no macFUSE kext. Enforcement is delivered per platform by composing pure-Go libraries (on Linux) and host-provided binaries invoked via `exec.Command` (on macOS), behind a single `Sandbox` interface.
 
 #### Linux
 
@@ -607,7 +608,7 @@ This layering gives aixgo.dev a credible answer to the single most common securi
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| macOS `sandbox-exec` is Apple-deprecated (has been for years); future macOS could remove it. | High | Binary still ships in every macOS release through 2026 and is used by Apple's own tooling. Document a FUSE-T + `hanwen/go-fuse` fallback path; build the `Jailer` interface so the implementation can swap without touching callers. `aixgate doctor` detects and warns if `sandbox-exec` is missing. |
+| macOS `sandbox-exec` is Apple-deprecated (has been for years); future macOS could remove it. | High | Binary still ships in every macOS release through 2026 and is used by Apple's own tooling. Document a FUSE-T + `hanwen/go-fuse` fallback path; build the `Sandbox` interface so the implementation can swap without touching callers. `aixgate doctor` detects and warns if `sandbox-exec` is missing. |
 | Agents fork subprocesses that escape the sandbox. | High | Rely on mount namespaces (Linux) and `sandbox-exec` child inheritance (macOS) rather than FUSE-only enforcement. Add landlock where available. |
 | Symlink and path traversal bugs in the overlay leak data. | High | Canonicalize before every policy check. Comprehensive test suite including adversarial traversal cases. Third-party security review before v1.0. |
 | Policy complexity leads to footgun allowlists. | Medium | `aixgate policy check` warns on overly broad rules. Ship safe defaults. Document common patterns. |
@@ -659,7 +660,7 @@ This layering gives aixgo.dev a credible answer to the single most common securi
 4. **Audit log writes are fire-and-forget** from the FUSE hot path. Use a buffered channel; block on it only if the buffer is full, and prefer to drop with a counter metric rather than stall the agent.
 5. **Platform-specific code lives in files suffixed `_darwin.go` / `_linux.go`.** Shared logic lives in the unsuffixed file. Use Go build tags only where necessary.
 6. **No cgo anywhere.** All dependencies must be pure Go. On Linux, FUSE goes through `hanwen/go-fuse`; on macOS, sandboxing goes through `sandbox-exec` invoked via `os/exec`. This keeps binaries small, cross-compilation trivial, and eliminates the C-toolchain requirement for contributors.
-7. **Platform mechanisms are asymmetric.** Linux uses FUSE as the primary enforcement (per-op policy eval + rich audit); macOS uses `sandbox-exec` as the primary (kernel-enforced SBPL policy + OS log audit). Both sit behind a `Jailer` interface so the rest of the codebase is platform-agnostic.
+7. **Platform mechanisms are asymmetric.** Linux uses FUSE as the primary enforcement (per-op policy eval + rich audit); macOS uses `sandbox-exec` as the primary (kernel-enforced SBPL policy + OS log audit). Both sit behind a `Sandbox` interface so the rest of the codebase is platform-agnostic.
 
 ### 14.3 Testing strategy
 
@@ -705,12 +706,12 @@ A concrete, scoped proof-of-concept that a contributor (human or Claude Code) ca
 1. Single Go binary named `aixgate`, built pure Go (no cgo).
 2. One command: `aixgate run -- CMD [ARGS...]`.
 3. Hardcoded policy: hide every file matching `**/.env`, `**/.env.*`, `~/.ssh/id_*`, `~/.aws/credentials` by returning `ENOENT` (Linux, via FUSE) or denying `file-read*` in the generated SBPL profile (macOS, via `sandbox-exec`). Everything else passes through.
-4. macOS + Linux support. One platform is enough for the PoC; the other may be stubbed behind the `Jailer` interface.
+4. macOS + Linux support. One platform is enough for the PoC; the other may be stubbed behind the `Sandbox` interface.
 5. No config, no audit log, no profiles, no tests beyond a minimal smoke check.
 
 ### 15.2 Milestones
 
-1. **Stand up the `Jailer` interface and a pass-through implementation for the contributor's platform.**
+1. **Stand up the `Sandbox` interface and a pass-through implementation for the contributor's platform.**
    - On **Linux**: mount a pass-through FUSE overlay via `hanwen/go-fuse`. `aixgate run -- ls ~` works and shows the real home directory through the FUSE mount.
    - On **macOS**: generate an SBPL profile that allows everything, write it to a temp file, and exec the agent via `sandbox-exec -f profile.sb -- CMD`. `aixgate run -- ls ~` works and shows the real home directory under the sandbox.
 2. **Add the deny rules.** `aixgate run -- cat ~/.ssh/id_rsa` returns "No such file or directory" on Linux (FUSE `ENOENT`) and an access-denied on macOS (sandbox deny). `aixgate run -- cat ~/.aws/credentials` same. `aixgate run -- ls ~/.ssh` does not show `id_*` files on Linux; on macOS the files are visible in `ls` but unreadable (SBPL can't hide existence, only deny access — document this platform asymmetry).
@@ -770,7 +771,8 @@ Everything else in this PRD. Resist the urge to build the policy engine, audit l
 |---|---|---|---|
 | 0.1 | April 2026 | Charles Green | Initial draft. |
 | 0.2 | April 2026 | Charles Green | Rebrand Warden → Aixgate. |
-| 0.3 | April 2026 | Charles Green | Replace cgofuse with pure-Go jailer stack (hanwen/go-fuse + go-landlock + go-seccomp-bpf on Linux, sandbox-exec on macOS). Confirm aixgate lives in the aixgo monorepo — see ADR 0001. |
+| 0.3 | April 2026 | Charles Green | Replace cgofuse with pure-Go sandbox stack (hanwen/go-fuse + go-landlock + go-seccomp-bpf on Linux, sandbox-exec on macOS). Confirm aixgate lives in the aixgo monorepo — see ADR 0001. |
+| 0.4 | May 2026 | Charles Green | Rename `jail`/`Jailer` to `sandbox`/`Sandbox` throughout (legacy terms left over from the Warden→Aixgate rebrand). Document v0.1 weekend-build PoC results in [PR #3](https://github.com/aixgo-dev/aixgate/pull/3). |
 
 ---
 

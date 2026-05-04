@@ -50,7 +50,7 @@ Aixgate is a **runtime sandbox for AI coding agents** (Claude Code, Cursor, Aide
 
 Current priorities (per PRD §15 weekend build plan):
 
-1. **`cmd/aixgate run`** — launch a child process inside a deny-by-default jail.
+1. **`cmd/aixgate run`** — launch a child process inside a deny-by-default sandbox.
 2. **Linux backend** — Landlock + seccomp-bpf + Go-FUSE composition.
 3. **macOS backend** — `sandbox-exec` profile generation and launch.
 4. **Policy parser** — `.aixgate.yaml` schema.
@@ -71,7 +71,7 @@ Current priorities (per PRD §15 weekend build plan):
                           ↓
               Policy Parser (.aixgate.yaml → AST)
                           ↓
-                Jail Runtime (pkg/aixgate/jail)
+              Sandbox Runtime (internal/aixgate/sandbox)
                 ↓                          ↓
          Linux backend                macOS backend
    (Landlock + seccomp + FUSE)      (sandbox-exec profile)
@@ -88,11 +88,11 @@ cmd/aixgate/                # CLI entry point (run, audit, profiles, version)
 pkg/aixgate/                # Public client library (for aixgo framework integration:
                             #   AIXGATE_ACTIVE=1 detection, audit-context streaming)
 internal/aixgate/
-  ├── policy/               # .aixgate.yaml parser + AST + validation
-  ├── jail/                 # platform-agnostic jail orchestration
-  ├── fs/                   # FUSE overlay (Linux), path masking
-  ├── audit/                # JSONL audit log writer + tail/query
-  └── profiles/             # built-in profiles (claude-code, cursor, aider, codex, generic)
+  ├── sandbox/              # platform-agnostic sandbox orchestration (Sandbox interface, Policy)
+  ├── policy/               # .aixgate.yaml parser + AST + validation (v0.2)
+  ├── fs/                   # FUSE overlay (Linux), path masking (v0.2)
+  ├── audit/                # JSONL audit log writer + tail/query (v0.2)
+  └── profiles/             # built-in profiles (claude-code, cursor, aider, codex, generic) (v0.2)
 profiles/                   # YAML profile files shipped with the binary
 docs/
   ├── PRD.md                # Product requirements document
@@ -135,15 +135,15 @@ func (p *Policy) AllowsRead(path string) bool
 
 ```go
 // Always wrap with %w
-result, err := jail.Start(ctx, cmd)
+result, err := sb.Run(ctx, cmd, args)
 if err != nil {
-    return nil, fmt.Errorf("start jail: %w", err)
+    return nil, fmt.Errorf("run sandbox: %w", err)
 }
 
 // Sentinel errors for category checks
 var (
     ErrPolicyViolation = errors.New("policy violation")
-    ErrJailEscape      = errors.New("jail integrity check failed")
+    ErrSandboxEscape   = errors.New("sandbox integrity check failed")
     ErrAuditWrite      = errors.New("audit log write failed")
 )
 ```
@@ -152,7 +152,7 @@ var (
 
 ```go
 // Always first parameter
-func (j *Jail) Start(ctx context.Context, cmd *exec.Cmd) (*Process, error)
+func (s *Sandbox) Run(ctx context.Context, cmd string, args []string) error
 
 // Use for timeouts and cancellation
 ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -161,7 +161,7 @@ defer cancel()
 
 ### Concurrency
 
-The jail runtime is single-threaded per child process; concurrency lives in the audit log writer (which fans in events from multiple jails).
+The sandbox runtime is single-threaded per child process; concurrency lives in the audit log writer (which fans in events from multiple sandboxes).
 
 ```go
 // Audit log uses a fan-in channel pattern
@@ -219,7 +219,7 @@ The `.gitleaks.toml` config allowlists these patterns.
 
 ### Policy Schema
 
-Policies are YAML, parsed into an AST, and validated before the jail starts. Schema is versioned via top-level `apiVersion`. See [PRD §7](docs/PRD.md) for the full schema; example:
+Policies are YAML, parsed into an AST, and validated before the sandbox starts. Schema is versioned via top-level `apiVersion`. See [PRD §7](docs/PRD.md) for the full schema; example:
 
 ```yaml
 apiVersion: aixgate/v1
@@ -242,7 +242,7 @@ network:
     deny: ["*"]
 ```
 
-### Jail Lifecycle
+### Sandbox Lifecycle
 
 1. **Compile** policy AST.
 2. **Spawn** child process with platform-specific isolation primitives applied (Landlock + seccomp + FUSE on Linux; `sandbox-exec` profile on macOS).
@@ -254,8 +254,8 @@ network:
 Append-only JSONL. One record per access decision. See [PRD §8](docs/PRD.md) for full schema.
 
 ```jsonl
-{"ts":"2026-05-03T10:14:22.491Z","jail":"j-abc123","decision":"DENY","action":"open","path":"/Users/you/.env","cmd":"cat","pid":42137,"reason":"matched deny rule .env"}
-{"ts":"2026-05-03T10:14:25.108Z","jail":"j-abc123","decision":"ALLOW","action":"read","path":"/Users/you/code/my-project/main.go","cmd":"claude","pid":42138}
+{"ts":"2026-05-03T10:14:22.491Z","sandbox":"sb-abc123","decision":"DENY","action":"open","path":"/Users/you/.env","cmd":"cat","pid":42137,"reason":"matched deny rule .env"}
+{"ts":"2026-05-03T10:14:25.108Z","sandbox":"sb-abc123","decision":"ALLOW","action":"read","path":"/Users/you/code/my-project/main.go","cmd":"claude","pid":42138}
 ```
 
 ### Built-in Profiles
@@ -265,13 +265,13 @@ Profiles in `profiles/<name>.yaml` ship as embedded files (`//go:embed`). Users 
 ### Backend Abstraction
 
 ```go
-package jail
+package sandbox
 
 type Backend interface {
     Name() string                                    // "linux-landlock" | "darwin-sandbox-exec"
     Supported() (bool, error)                        // does this host support this backend?
     Compile(p *Policy) (CompiledPolicy, error)       // backend-specific compilation
-    Spawn(ctx context.Context, c *exec.Cmd, cp CompiledPolicy) (*Jail, error)
+    Spawn(ctx context.Context, c *exec.Cmd, cp CompiledPolicy) (Sandbox, error)
 }
 ```
 
@@ -292,7 +292,7 @@ The CLI selects the backend automatically based on `runtime.GOOS`.
 
 1. Extend the AST in `internal/aixgate/policy/ast.go`.
 2. Add parser support in `internal/aixgate/policy/parser.go`.
-3. Implement enforcement in **every** backend (`internal/aixgate/jail/linux/`, `internal/aixgate/jail/darwin/`).
+3. Implement enforcement in **every** backend (`internal/aixgate/sandbox/linux.go`, `internal/aixgate/sandbox/darwin.go`).
 4. Add unit tests for the parser and a conformance test that runs against every backend.
 5. Document in [PRD §7](docs/PRD.md).
 
@@ -347,7 +347,7 @@ import (
 
     // Internal (closed to external consumers)
     "github.com/aixgo-dev/aixgate/internal/aixgate/policy"
-    "github.com/aixgo-dev/aixgate/internal/aixgate/jail"
+    "github.com/aixgo-dev/aixgate/internal/aixgate/sandbox"
     "github.com/aixgo-dev/aixgate/internal/aixgate/audit"
 
     // Public client library (for aixgo framework integration)
@@ -363,7 +363,7 @@ import (
 
 - **CLI**: `cmd/aixgate/main.go`, `cmd/aixgate/cmd/{run,audit,profiles,version}.go`
 - **Policy**: `internal/aixgate/policy/{parser,ast,validate}.go`
-- **Jail**: `internal/aixgate/jail/{jail,linux,darwin}.go`
+- **Sandbox**: `internal/aixgate/sandbox/{sandbox,linux,darwin,policy}.go`
 - **Audit**: `internal/aixgate/audit/{writer,query,tail}.go`
 - **Profiles**: `internal/aixgate/profiles/embed.go`, `profiles/*.yaml`
 
