@@ -500,7 +500,7 @@ aixgate audit tail --follow --profile claude-code
 
 - Signed macOS universal binary (arm64 + x86_64), distributed as a plain `.tar.gz`. No `.pkg` needed — no kernel extension to install.
 - Linux static binary for x86_64 and arm64, distributed as `.tar.gz` and `.deb`.
-- Homebrew tap: `brew install aixgo/tap/aixgate`.
+- Homebrew tap: `brew install aixgo-dev/tap/aixgate`.
 - Shell installer: `curl -sSL https://aixgo.dev/aixgate/install.sh | sh`.
 
 ### 9.2 Dependencies

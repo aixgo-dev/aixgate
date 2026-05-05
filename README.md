@@ -64,7 +64,7 @@ Aixgate is built specifically for the developer-laptop + AI-coding-agent threat 
 ### macOS — Homebrew (recommended)
 
 ```bash
-brew install aixgo-dev/aixgate/aixgate
+brew install aixgo-dev/tap/aixgate
 ```
 
 ### Any platform — `go install`
