@@ -100,7 +100,7 @@ release:
 
     **macOS (Homebrew):**
     ```bash
-    brew install aixgo-dev/aixgate/aixgate
+    brew install aixgo-dev/tap/aixgate
     ```
 
     **Linux (one-liner):**
@@ -130,7 +130,7 @@ brews:
   - name: aixgate
     repository:
       owner: aixgo-dev
-      name: homebrew-aixgate
+      name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
