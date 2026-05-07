@@ -5,11 +5,11 @@
 | | |
 |---|---|
 | **Project** | Aixgate |
-| **Parent** | aixgo.dev |
+| **Repository** | <https://github.com/aixgo-dev/aixgate> |
+| **Sibling project** | [Aixgo](https://github.com/aixgo-dev/aixgo) — production AI agent framework for Go |
 | **Author** | Charles Green |
-| **Version** | 0.1 (Draft) |
+| **Current release** | v0.1.0 (see [GitHub Releases](https://github.com/aixgo-dev/aixgate/releases/latest) for the canonical version) |
 | **Date** | May 2026 |
-| **Status** | Proposed |
 | **License** | MIT |
 
 ---
@@ -520,11 +520,13 @@ MIT, matching aixgo.dev. Contributions accepted under a lightweight DCO (Develop
 
 ## 10. Relationship to aixgo.dev
 
-Aixgate is the security and runtime isolation primitive in the aixgo.dev ecosystem. The relationship is intentionally layered:
+Aixgate is the security and runtime isolation primitive in the aixgo.dev ecosystem. The cross-project story is documented in detail in the [Aixgo PRD § 12](https://github.com/aixgo-dev/aixgo/blob/main/docs/PRD.md#12-relationship-to-aixgate-and-the-wider-ecosystem); this section covers the same relationship from Aixgate's side.
+
+The relationship is intentionally layered:
 
 | aixgo.dev project | Role |
 |---|---|
-| **aixgo** (framework) | Build agents: orchestration patterns, LLM providers, memory, tools. |
+| **aixgo** (framework) | Build agents: orchestration patterns, LLM providers, memory, tools. See <https://github.com/aixgo-dev/aixgo>. |
 | **Aixgate** | Run agents safely on developer workstations. Enforces filesystem and exec policy at the OS boundary. |
 | **aixgo-cloud** (future) | Run agents safely in server and CI environments. Shares policy format with Aixgate. |
 
@@ -699,7 +701,9 @@ Before v1.0:
 
 ## 15. v0.1 Weekend Build Plan
 
-A concrete, scoped proof-of-concept that a contributor (human or Claude Code) can complete in a weekend. The goal is to validate the enforcement boundary and the UX hypothesis, not to ship a product.
+> **Status (May 2026):** v0.1.0 has shipped. See <https://github.com/aixgo-dev/aixgate/releases/latest>. This section is preserved as a historical record of the original scope and as guidance for contributors approaching the codebase. The roadmap for what comes next lives in [§ 11](#11-roadmap).
+
+A concrete, scoped proof-of-concept that a contributor (human or Claude Code) can complete in a weekend. The goal was to validate the enforcement boundary and the UX hypothesis, not to ship a product.
 
 ### 15.1 Scope
 
